@@ -34,31 +34,28 @@ except Exception as e:
     logger.error(f"Failed to initialize: {e}")
     raise
 
-# Global services
-assessment_service = None
-db_service = None
+# Global services - initialized at startup to avoid timeout
+logger.info("🔄 Loading speech assessment service at startup...")
+assessment_service = SpeechAssessmentService(
+    whisper_model=app.config['WHISPER_MODEL']
+)
+logger.info("✓ Speech assessment service loaded")
+
+db_service = DatabaseService()
+logger.info("✓ Database service initialized")
 
 def get_assessment_service():
-    """Get or create assessment service"""
-    global assessment_service
-    if assessment_service is None:
-        assessment_service = SpeechAssessmentService(
-            whisper_model=app.config['WHISPER_MODEL']
-        )
+    """Get assessment service (already initialized at startup)"""
     return assessment_service
 
 def get_db_service():
-    """Get or create database service"""
-    global db_service
-    if db_service is None:
-        db_service = DatabaseService()
+    """Get database service (already initialized at startup)"""
     return db_service
 
 @app.before_request
 def before_request():
-    """Initialize services before each request"""
-    get_assessment_service()
-    get_db_service()
+    """Services already initialized at startup"""
+    pass
 
 def allowed_file(filename):
     """Check if file has allowed audio format"""
