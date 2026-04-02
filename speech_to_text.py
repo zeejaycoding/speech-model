@@ -20,7 +20,7 @@ class SpeechRecognizer:
     def _load_model(self):
         try:
             logger.info(f"Loading Whisper {self.model_size} model...")
-            self.model = whisper.load_model(self.model_size)
+            self.model = whisper.load_model(self.model_size, device='cpu')
             logger.info("Model loaded successfully")
         except Exception as e:
             logger.error(f"Failed to load model: {e}")
