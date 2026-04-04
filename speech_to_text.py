@@ -4,6 +4,7 @@ High-accuracy speech-to-text module using OpenAI Whisper
 import whisper
 import json
 import sys
+import os
 from pathlib import Path
 import logging
 
@@ -11,6 +12,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 MODEL_FALLBACK_ORDER = ['tiny', 'base', 'small', 'medium', 'large']
+PRODUCTION_MODEL_CAP = ['tiny', 'base', 'small']
 
 class SpeechRecognizer:
     
@@ -21,6 +23,14 @@ class SpeechRecognizer:
     
     def _load_model(self):
         preferred_size = self.model_size
+
+        if os.getenv('RAILWAY_ENVIRONMENT') and os.getenv('ALLOW_HEAVY_WHISPER_MODEL', 'false').lower() != 'true':
+            if preferred_size not in PRODUCTION_MODEL_CAP:
+                logger.warning(
+                    f"Whisper model '{preferred_size}' is too heavy for Railway; capping to 'base'"
+                )
+                preferred_size = 'base'
+
         candidate_sizes = [preferred_size]
 
         if preferred_size in MODEL_FALLBACK_ORDER:
