@@ -1,6 +1,7 @@
 """
 Flask REST API for speech assessment with Supabase backend
 """
+import base64
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from werkzeug.utils import secure_filename
@@ -92,14 +93,24 @@ def assess_pronunciation():
     """
     try:
         # Validate request
-        if 'audio_file' not in request.files:
-            return jsonify({'error': 'No audio file provided'}), 400
-        
-        audio_file = request.files['audio_file']
-        expected_word = request.form.get('expected_word', '').strip()
-        child_id = request.form.get('child_id', '').strip()
-        user_id = request.form.get('user_id', '').strip()
-        session_id = request.form.get('session_id', '').strip() or None
+        payload = request.get_json(silent=True) if request.is_json else None
+
+        audio_file = None
+        expected_word = ''
+        child_id = ''
+        user_id = ''
+        session_id = None
+
+        if payload:
+            expected_word = str(payload.get('expected_word', '')).strip()
+            child_id = str(payload.get('child_id', '')).strip()
+            user_id = str(payload.get('user_id', '')).strip()
+            session_id = str(payload.get('session_id', '')).strip() or None
+        else:
+            expected_word = request.form.get('expected_word', '').strip()
+            child_id = request.form.get('child_id', '').strip()
+            user_id = request.form.get('user_id', '').strip()
+            session_id = request.form.get('session_id', '').strip() or None
         
         if not expected_word:
             return jsonify({'error': 'Expected word not provided'}), 400
@@ -107,18 +118,38 @@ def assess_pronunciation():
         if not child_id:
             return jsonify({'error': 'Child ID is required'}), 400
         
-        if audio_file.filename == '':
-            return jsonify({'error': 'No audio file selected'}), 400
-        
-        if not allowed_file(audio_file.filename):
-            return jsonify({'error': f'File type not allowed. Allowed: {app.config["ALLOWED_AUDIO_FORMATS"]}'}), 400
-        
-        # Save audio file
-        filename = secure_filename(audio_file.filename)
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S_')
-        filename = timestamp + filename
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        audio_file.save(filepath)
+
+        if payload and payload.get('audio_base64'):
+            audio_base64 = str(payload.get('audio_base64', '')).strip()
+            filename = secure_filename(str(payload.get('audio_filename', f'recording_{timestamp}.m4a')).strip())
+
+            if not allowed_file(filename):
+                return jsonify({'error': f'File type not allowed. Allowed: {app.config["ALLOWED_AUDIO_FORMATS"]}'}), 400
+
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
+
+            try:
+                audio_bytes = base64.b64decode(audio_base64)
+            except Exception:
+                return jsonify({'error': 'Invalid base64 audio payload'}), 400
+
+            with open(filepath, 'wb') as audio_output:
+                audio_output.write(audio_bytes)
+        elif 'audio_file' in request.files:
+            audio_file = request.files['audio_file']
+
+            if audio_file.filename == '':
+                return jsonify({'error': 'No audio file selected'}), 400
+
+            if not allowed_file(audio_file.filename):
+                return jsonify({'error': f'File type not allowed. Allowed: {app.config["ALLOWED_AUDIO_FORMATS"]}'}), 400
+
+            filename = secure_filename(audio_file.filename)
+            filepath = os.path.join(app.config['UPLOAD_FOLDER'], timestamp + filename)
+            audio_file.save(filepath)
+        else:
+            return jsonify({'error': 'No audio file provided'}), 400
         
         logger.info(f"Audio file saved: {filepath}")
         
