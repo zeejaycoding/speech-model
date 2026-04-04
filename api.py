@@ -14,6 +14,7 @@ from pathlib import Path
 from config import Config, config
 from db_service import DatabaseService
 from assessment_service import SpeechAssessmentService
+from threading import Lock
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,9 @@ CORS(app)
 # Ensure upload folder exists
 Path(app.config['UPLOAD_FOLDER']).mkdir(exist_ok=True)
 
+_assessment_service = None
+_service_lock = Lock()
+
 # Initialize Supabase REST API (no direct PostgreSQL connection needed!)
 try:
     logger.info("✓ Initializing Supabase REST API...")
@@ -35,19 +39,23 @@ except Exception as e:
     logger.error(f"Failed to initialize: {e}")
     raise
 
-# Global services - initialized at startup to avoid timeout
-logger.info("🔄 Loading speech assessment service at startup...")
-assessment_service = SpeechAssessmentService(
-    whisper_model=app.config['WHISPER_MODEL']
-)
-logger.info("✓ Speech assessment service loaded")
-
 db_service = DatabaseService()
 logger.info("✓ Database service initialized")
 
 def get_assessment_service():
-    """Get assessment service (already initialized at startup)"""
-    return assessment_service
+    """Get assessment service, loading Whisper lazily on first use."""
+    global _assessment_service
+
+    if _assessment_service is None:
+        with _service_lock:
+            if _assessment_service is None:
+                logger.info("🔄 Loading speech assessment service lazily...")
+                _assessment_service = SpeechAssessmentService(
+                    whisper_model=app.config['WHISPER_MODEL']
+                )
+                logger.info("✓ Speech assessment service loaded")
+
+    return _assessment_service
 
 def get_db_service():
     """Get database service (already initialized at startup)"""
@@ -447,15 +455,18 @@ def internal_error(error):
 # ============ Startup Initialization ============
 
 def initialize_services():
-    """Load services at startup (Whisper model + Supabase client)"""
+    """Prepare startup services."""
     logger.info("=" * 60)
     logger.info("INITIALIZING SERVICES AT STARTUP...")
     logger.info("=" * 60)
     
     try:
-        logger.info("1. Loading Whisper model (this may take 1-2 minutes)...")
-        service = get_assessment_service()
-        logger.info(f"✓ Whisper {app.config['WHISPER_MODEL']} model loaded successfully!")
+        if app.config.get('PRELOAD_WHISPER_MODEL'):
+            logger.info("1. Preloading Whisper model (explicitly enabled)...")
+            get_assessment_service()
+            logger.info(f"✓ Whisper {app.config['WHISPER_MODEL']} model loaded successfully!")
+        else:
+            logger.info(f"1. Whisper preload disabled; model will load on first request ({app.config['WHISPER_MODEL']})")
     except Exception as e:
         logger.error(f"✗ Failed to load Whisper model: {e}")
         raise

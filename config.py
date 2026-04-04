@@ -5,7 +5,8 @@ load_dotenv()
 
 class Config:
     """Base configuration"""
-    WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'medium')
+    WHISPER_MODEL = os.getenv('WHISPER_MODEL', 'base')
+    PRELOAD_WHISPER_MODEL = os.getenv('PRELOAD_WHISPER_MODEL', 'false').lower() == 'true'
     
     # Supabase Credentials
     SUPABASE_URL = os.getenv('SUPABASE_URL')
